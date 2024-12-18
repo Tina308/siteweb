@@ -1,0 +1,165 @@
+---
+title: "Analyse des Données"
+---
+
+```{r,echo= FALSE}
+# Charger les données
+library(tidyverse)
+
+base_emp_inno <- read.csv("base_emp_inno.csv")
+
+# Remplacement des NA pour les variables importantes
+base_emp_inno <- base_emp_inno %>%
+  mutate(avg_wage = ifelse(is.na(avg_wage), median(avg_wage, na.rm = TRUE), avg_wage),
+         avg_req_exp = ifelse(is.na(avg_req_exp), median(avg_req_exp, na.rm = TRUE), avg_req_exp))
+
+
+
+ipc_sector <- base_emp_inno %>%
+  group_by(sector_main, ipc_main_code) %>%
+  summarise(n_patents = sum(n_patents, na.rm = TRUE)) %>%
+  filter(!is.na(sector_main) & !is.na(ipc_main_code))
+
+ggplot(ipc_sector, aes(x = sector_main, y = n_patents, fill = ipc_main_code)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  labs(
+    title = "Codes IPC par Secteur",
+    x = "Secteur",
+    y = "Nombre de brevets",
+    fill = "Code IPC"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Nuage de mots des compétences pondéré par salaire
+
+```{r,echo= FALSE}
+
+library(tidyverse)
+library(wordcloud2)
+library(htmltools)
+
+# Créer le tableau des compétences avec la pondération par salaire
+skills_df_salary <- base_emp_inno %>%
+  separate_rows(top_skill_req, sep = ", ") %>%
+  group_by(skill = str_to_lower(str_trim(top_skill_req))) %>%
+  summarise(
+    frequency = n(),  # Compter le nombre d'occurrences de chaque compétence
+    avg_salary = mean(avg_wage, na.rm = TRUE)  # Moyenne des salaires pour chaque compétence
+  ) %>%
+  filter(!is.na(skill) & skill != "") %>%
+  mutate(size = avg_salary)  # Créer une colonne "size" pondérée par le salaire
+
+# Générer le word cloud pondéré par le salaire
+wordcloud_plot_salary <- wordcloud2(skills_df_salary, 
+                                    size = 0.8, 
+                                    color = "random-light", 
+                                    backgroundColor = "white", 
+                                    minSize = 10)
+
+# Ajouter un titre au graphique
+htmltools::browsable(
+  tags$html(
+    tags$head(tags$title("Nuage de mots des compétences pondéré par salaire")),  # Titre de la page HTML
+    tags$body(
+      tags$h3("Nuage de mots des compétences pondéré par salaire"),  # Titre au-dessus du graphique
+      wordcloud_plot_salary
+    )
+  )
+)
+
+
+```
+
+#### Nuage de mots des compétences pondéré par nombre de brevets
+
+```{r,echo= FALSE}
+
+library(tidyverse)
+library(wordcloud2)
+library(htmltools)
+
+# Créer le tableau des compétences avec le nombre de brevets
+skills_df_patents <- base_emp_inno %>%
+  separate_rows(top_skill_req, sep = ", ") %>%
+  group_by(skill = str_to_lower(str_trim(top_skill_req))) %>%
+  summarise(
+    frequency = n(),  # Compter le nombre d'occurrences de chaque compétence
+    n_patents = sum(n_patents, na.rm = TRUE)  # Total des brevets pour chaque compétence
+  ) %>%
+  filter(!is.na(skill) & skill != "") %>%
+  mutate(size = n_patents)  # Créer une colonne "size" pondérée par le nombre de brevets
+
+# Générer le word cloud pondéré par le nombre de brevets
+wordcloud_plot_patents <- wordcloud2(skills_df_patents, 
+                                     size = 0.8, 
+                                     color = "random-light", 
+                                     backgroundColor = "white", 
+                                     minSize = 10)
+
+# Ajouter un titre au graphique
+htmltools::browsable(
+  tags$html(
+    tags$head(tags$title("Nuage de mots des compétences pondéré par nombre de brevets")),  # Titre de la page HTML
+    tags$body(
+      tags$h3("Nuage de mots des compétences pondéré par nombre de brevets"),  # Titre au-dessus du graphique
+      wordcloud_plot_patents
+    )
+  )
+)
+
+```
+
+#### Nombre moyen d'offres par secteur
+
+```{r,echo= FALSE}
+
+sector_summary <- base_emp_inno %>%
+  filter(!is.na(sector_main)) %>%  # Supprimer les secteurs NA
+  group_by(sector_main) %>%
+  summarise(
+    avg_offers = mean(n_offres, na.rm = TRUE),
+    avg_patents = mean(n_patents, na.rm = TRUE)
+  )
+
+ggplot(sector_summary, aes(x = reorder(sector_main, avg_offers), y = avg_offers, fill = avg_patents)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  labs(
+    title = "Nombre moyen d'offres par secteur",
+    x = "Secteur",
+    y = "Nombre moyen d'offres",
+    fill = "Moyenne des brevets"
+  ) +
+  coord_flip() +
+  theme_minimal()
+
+```
+
+### Innovation et demande de compétences
+
+```{r,echo= FALSE}
+# Filtrer les NA dans les colonnes n_patents, n_offres et sector_main
+sector_summary <- base_emp_inno %>%
+  filter(!is.na(n_patents) & !is.na(n_offres) & !is.na(sector_main)) %>%
+  group_by(sector_main) %>%
+  summarise(
+    avg_patents = mean(n_patents, na.rm = TRUE),
+    avg_offers = mean(n_offres, na.rm = TRUE)
+  )
+
+# Graphique combiné
+ggplot(sector_summary, aes(x = reorder(sector_main, avg_patents), y = avg_patents, fill = avg_offers)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  labs(
+    title = "Innovation et Demande de Compétences par Secteur",
+    x = "Secteur",
+    y = "Moyenne des Brevets (Innovation)",
+    fill = "Nombre moyen d'offres"
+  ) +
+  coord_flip() +
+  theme_minimal()
+
+```
